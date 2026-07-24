@@ -15171,7 +15171,7 @@ export const BattleMoveAnims: AnimTable = {
 			}, 'swing');
 		},
 	},
-	katana: {
+	chakimaru: {
 		anim(scene, [attacker, defender]) {
 			scene.backgroundEffect('#000000', 800, 0.3, 400);
 			scene.showEffect('leftslash', {
