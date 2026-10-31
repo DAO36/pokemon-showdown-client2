@@ -1,13 +1,14 @@
 const assert = require('assert').strict;
-const {describe, it} = require('node:test');
 
-global.BattlePokedex = require('../../play.pokemonshowdown.com/data/pokedex.js').BattlePokedex;
-require('../../play.pokemonshowdown.com/js/battle-dex-data.js');
-require('../../play.pokemonshowdown.com/js/battle-dex.js');
-require('../../play.pokemonshowdown.com/js/battle-tooltips.js');
+try {
+  global.BattlePokedex = require('../play.pokemonshowdown.com/data/pokedex.js').BattlePokedex;
+} catch (err) {}
+require('../play.pokemonshowdown.com/js/battle-dex-data.js');
+require('../play.pokemonshowdown.com/js/battle-dex.js');
+require('../play.pokemonshowdown.com/js/battle-tooltips.js');
 
 describe('EV Optimizer', () => {
-  it('should find the spreads that saves the most EVs', () => {
+  (global.BattlePokedex ? it : it.skip)('should find the spreads that saves the most EVs', () => {
     const trapinch = BattleStatOptimizer({
       species: "Trapinch",
       nature: "Lax",

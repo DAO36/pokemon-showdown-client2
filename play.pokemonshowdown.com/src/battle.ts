@@ -27,14 +27,9 @@
  * @license MIT
  */
 
-// import $ from 'jquery';
-import { BattleSceneStub } from './battle-scene-stub';
-import { BattleLog } from './battle-log';
-import { BattleScene, type PokemonSprite, BattleStatusAnims } from './battle-animations';
-import { Dex, PSUtils, toID, toUserid, type ID, type ModdedDex } from './battle-dex';
-import { BattleTextParser, type Args, type KWArgs, type SideID } from './battle-text-parser';
-import { Teams } from './battle-teams';
-declare const app: { user: AnyObject, rooms: AnyObject, ignore?: AnyObject } | undefined;
+import {BattleSceneStub} from './battle-scene-stub';
+import {BattleLog} from './battle-log';
+import {BattleScene, PokemonSprite, BattleStatusAnims} from './battle-animations';
 
 /** [id, element?, ...misc] */
 export type EffectState = any[] & {0: ID};
@@ -95,8 +90,7 @@ export class Pokemon implements PokemonDetails, PokemonHealth {
 	itemEffect = '';
 	prevItem = '';
 	prevItemEffect = '';
-	nature: Dex.NatureName | undefined = undefined;
-	terastallized = '';
+	terastallized: string | '' = '';
 	teraType = '';
 
 	boosts: {[stat: string]: number} = {};
@@ -235,7 +229,7 @@ export class Pokemon implements PokemonDetails, PokemonHealth {
 				}
 				// parse the absolute health information
 				let ret = this.healthParse(hpstring);
-				if (ret?.[1] === 100) {
+				if (ret && (ret[1] === 100)) {
 					// support for old replays with nearest-100th damage and health
 					return [damage, 100, damage];
 				}
@@ -340,41 +334,7 @@ export class Pokemon implements PokemonDetails, PokemonHealth {
 		this.clearMovestatuses();
 		this.side.battle.scene.clearEffects(this);
 	}
-	private mergePP(entry: [string, PPState], pp: PPState): PPState {
-		let ppUsed = entry[1];
-		if (typeof ppUsed === 'number') {
-			if (typeof pp === 'number') {
-				ppUsed += pp;
-			} else {
-				ppUsed = [ppUsed + pp[0], ppUsed + pp[1]];
-			}
-		} else {
-			if (typeof pp === 'number') {
-				ppUsed[0] += pp;
-				ppUsed[1] += pp;
-			} else {
-				ppUsed[0] += pp[0];
-				ppUsed[1] += pp[1];
-			}
-		}
-		if (typeof ppUsed === 'number') {
-			if (ppUsed < 0) ppUsed = 0;
-		} else {
-			if (ppUsed[0] < 0) ppUsed[0] = 0;
-			if (ppUsed[1] < 0) ppUsed[1] = 0;
-			const move = this.side.battle.dex.moves.get(entry[0]);
-			let maxpp = (move.pp === 1 || move.noPPBoosts ? move.pp : move.pp * 8 / 5);
-			if (this.side.battle.format.isChampions) {
-				maxpp = move.pp > 20 ? 20 : move.pp;
-				maxpp = move.pp === 1 || move.noPPBoosts ? move.pp : (move.pp / 5 + 1) * 4;
-			}
-			if (ppUsed[0] > maxpp) ppUsed[0] = maxpp;
-			if (ppUsed[0] < ppUsed[1]) ppUsed[0] = ppUsed[1];
-			if (ppUsed[0] === ppUsed[1]) ppUsed = ppUsed[0];
-		}
-		return ppUsed;
-	}
-	rememberMove(moveName: string, pp: PPState = 1, recursionSource?: string) {
+	rememberMove(moveName: string, pp = 1, recursionSource?: string) {
 		if (recursionSource === this.ident) return;
 		moveName = Dex.moves.get(moveName).name;
 		if (moveName.charAt(0) === '*') return;
@@ -549,7 +509,7 @@ export class Pokemon implements PokemonDetails, PokemonHealth {
 		if (item === 'ironball') {
 			return true;
 		}
-		if (ability === 'levitate' || ability === 'eelevate') {
+		if (ability === 'levitate') {
 			return false;
 		}
 		if (this.volatiles['magnetrise'] || this.volatiles['telekinesis']) {
@@ -614,13 +574,6 @@ export class Pokemon implements PokemonDetails, PokemonHealth {
 			let range = Pokemon.getPixelRange(this.hp, this.hpcolor);
 			let ratio = (range[0] + range[1]) / 2;
 			return Math.round(maxWidth * ratio) || 1;
-		}
-		if (this.side.battle.hpPercentageMod) {
-			let percentage = Math.ceil(100 * this.hp / this.maxhp);
-			if ((percentage === 100) && (this.hp < this.maxhp)) {
-				percentage = 99;
-			}
-			return percentage * maxWidth / 100;
 		}
 		const width = Math.round(this.hp / this.maxhp * maxWidth) || 1;
 		return this.hp < this.maxhp && width === maxWidth ? maxWidth - 1 : width;
@@ -717,7 +670,7 @@ export class Side {
 			this.setAvatar(avatar);
 		} else {
 			this.rollTrainerSprites();
-			if (this.avatar === this.foe?.avatar) this.rollTrainerSprites();
+			if (this.foe && this.avatar === this.foe.avatar) this.rollTrainerSprites();
 		}
 	}
 	addSideCondition(effect: Effect, persist: boolean) {
@@ -806,7 +759,6 @@ export class Side {
 		if (!poke.ability && poke.baseAbility) poke.ability = poke.baseAbility;
 		poke.reset();
 		if (oldPokemon?.moveTrack.length) poke.moveTrack = oldPokemon.moveTrack;
-		if (oldPokemon?.nature) poke.nature = oldPokemon.nature;
 
 		if (replaceSlot >= 0) {
 			this.pokemon[replaceSlot] = poke;
@@ -955,9 +907,6 @@ export class Side {
 		}
 		pokemon.statusData.toxicTurns = 0;
 		if (this.battle.gen === 5) pokemon.statusData.sleepTurns = 0;
-		if (this.battle.format.isChampions) {
-			pokemon.timesAttacked = 0;
-		}
 		this.lastPokemon = pokemon;
 		this.active[slot] = null;
 
@@ -1043,8 +992,6 @@ export interface ServerPokemon extends PokemonDetails, PokemonHealth {
 	details: string;
 	condition: string;
 	active: boolean;
-	reviving?: boolean;
-	commanding: boolean;
 	/** unboosted stats */
 	stats: {
 		atk: number,
@@ -1151,14 +1098,12 @@ export class Battle {
 	teamPreviewCount = 0;
 	speciesClause = false;
 	tier = '';
-	format = Dex.formats.get('');
-	gameType: 'singles' | 'doubles' | 'triples' | 'multi' | 'freeforall' | 'rotation' = 'singles';
+	gameType: 'singles' | 'doubles' | 'triples' | 'multi' | 'freeforall' = 'singles';
 	compatMode = true;
 	rated: string | boolean = false;
 	rules: {[ruleName: string]: 1 | 0} = {};
 	isBlitz = false;
 	reportExactHP = false;
-	hpPercentageMod = false;
 	endLastTurnPending = false;
 	totalTimeLeft = 0;
 	graceTimeLeft = 0;
@@ -1339,7 +1284,6 @@ export class Battle {
 		// activity queue state
 		this.activeMoveIsSpread = null;
 		this.currentStep = 0;
-		this.preemptStepQueue = [];
 		this.resetTurnsSinceMoved();
 		this.nextStep();
 	}
@@ -1430,7 +1374,7 @@ export class Battle {
 		if (turnNum === this.turn + 1) {
 			this.endLastTurnPending = true;
 		}
-		if (this.turn > 0 && !this.usesUpkeep) this.updateTurnCounters(); // for compatibility with old replays
+		if (this.turn && !this.usesUpkeep) this.updateTurnCounters(); // for compatibility with old replays
 		this.turn = turnNum;
 		this.started = true;
 
@@ -3456,18 +3400,6 @@ export class Battle {
 			this.nextStep();
 		}
 	}
-	addBatch(commands: string[]) {
-		for (const command of commands) {
-			switch (command.split('|', 2)[1]) {
-			case 'c': case 'c:': case 'chat': case 'chatmsg': case 'inactive':
-				this.run(command, true);
-				this.preemptStepQueue.push(command);
-				break;
-			}
-			this.stepQueue.push(command);
-		}
-		this.add();
-	}
 	/**
 	 * PS's preempt system is intended to show chat messages immediately,
 	 * instead of waiting for the battle to get to the point where the
@@ -3506,22 +3438,18 @@ export class Battle {
 		}
 		case 'tier': {
 			this.tier = args[1];
-			this.format = Dex.formats.get(this.tier);
-			if (this.tier.endsWith('Random Battle')) {
+			if (this.tier.slice(-13) === 'Random Battle') {
 				this.speciesClause = true;
 			}
 			if (this.tier.slice(-8) === ' (Blitz)') {
 				this.messageFadeTime = 40;
 				this.isBlitz = true;
 			}
-			if (this.format.isLetsGo) {
+			if (this.tier.includes(`Let's Go`)) {
 				this.dex = Dex.mod('gen7letsgo' as ID);
 			}
 			if (this.tier.includes('Super Staff Bros')) {
 				this.dex = Dex.mod('gen9ssb' as ID);
-			}
-			if (this.format.isChampions) {
-				this.dex = Dex.mod('champions' as ID);
 			}
 			this.log(args);
 			break;
@@ -3578,7 +3506,6 @@ export class Battle {
 				this.isBlitz = true;
 			}
 			if (ruleName === 'Exact HP Mod') this.reportExactHP = true;
-			if (ruleName === 'HP Percentage Mod') this.hpPercentageMod = true;
 			this.rules[ruleName] = 1;
 			this.log(args);
 			break;
@@ -3748,7 +3675,6 @@ export class Battle {
 				for (const move of set.moves) {
 					pokemon.rememberMove(move, 0);
 				}
-				pokemon.nature = set.nature;
 				if (set.teraType) pokemon.teraType = set.teraType;
 			}
 			this.log(args, kwArgs);
@@ -3897,11 +3823,11 @@ export class Battle {
 				} else {
 					this.runMajor(args, kwArgs, preempt);
 				}
-			} catch (err) {
-				this.log(['majorerror', 'Error parsing: ' + str]);
-				const stack = PSUtils.normalizeError(err);
-				if (stack) {
-					for (const line of stack.split('\n')) {
+			} catch (err: any) {
+				this.log(['majorerror', 'Error parsing: ' + str + ' (' + err + ')']);
+				if (err.stack) {
+					let stack = ('' + err.stack).split('\n');
+					for (const line of stack) {
 						if (/\brun\b/.test(line)) {
 							break;
 						}
@@ -3912,8 +3838,7 @@ export class Battle {
 			}
 		}
 
-		// Replays before clicking "Play" will pause themselves on the line before `|start`
-		if (nextLine.startsWith('|start') || args[0] === 'start' || args[0] === 'teampreview') {
+		if (nextLine.startsWith('|start') || args[0] === 'teampreview') {
 			if (this.turn === -1) {
 				this.turn = 0;
 				this.scene.updateBgm();
@@ -4006,7 +3931,6 @@ export class Battle {
 
 		let interruptionCount: number;
 		do {
-			// modified in this.run() but idk how to tell TS that
 			this.waitForAnimations = true;
 			if (this.currentStep >= this.stepQueue.length) {
 				this.atQueueEnd = true;

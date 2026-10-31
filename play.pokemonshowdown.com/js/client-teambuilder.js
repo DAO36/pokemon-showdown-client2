@@ -494,7 +494,7 @@
 					// support dragging and dropping buttons.
 					buf += '<li><div name="edit" data-value="' + i + '" class="team';
 					if (team.capacity === 24) buf += ' pc-box';
-					buf += '" draggable="true"><strong><span>' + BattleLog.escapeHTML(formatText) + '</span>' + BattleLog.escapeHTML(team.name) + '</strong><small>';
+					buf += '" draggable="true">' + BattleLog.escapeHTML(formatText) + '<strong>' + BattleLog.escapeHTML(team.name) + '</strong><br /><small>';
 					buf += Storage.getTeamIcons(team);
 					buf += '</small></div><button name="edit" value="' + i + '"><i class="fa fa-pencil" aria-label="Edit" title="Edit (you can also just click on the team)"></i></button><button name="duplicate" value="' + i + '" title="Duplicate" aria-label="Duplicate"><i class="fa fa-clone"></i></button><button name="delete" value="' + i + '"><i class="fa fa-trash"></i> Delete</button></li>';
 
@@ -901,8 +901,8 @@
 			if (this.curTeam.teamid) buf.push(this.curTeam.teamid);
 			buf.push(this.curTeam.name);
 			buf.push(this.curTeam.format);
-			buf.push(1);
-			var team = Storage.exportTeam(this.curSetList);
+			buf.push(this.$('input[name=teamprivacy]').get(0).checked ? 1 : 0);
+			var team = Storage.exportTeam(this.curSetList, this.curTeam.gen, false);
 			if (!team) return app.addPopupMessage("Add a Pokémon to your team before uploading it!");
 			buf.push(team);
 			app.send(cmd + " " + buf.join(', '));
@@ -912,7 +912,7 @@
 			$('label[name=editMessage]').hide();
 		},
 		pokepasteExport: function (type) {
-			var team = Storage.exportTeam(this.curSetList, type === 'openteamsheet', this.curTeam.format.includes('champions'));
+			var team = Storage.exportTeam(this.curSetList, this.curTeam.gen, type === 'openteamsheet');
 			if (!team) return app.addPopupMessage("Add a Pokémon to your team before uploading it!");
 			document.getElementById("pasteData").value = team;
 			document.getElementById("pasteTitle").value = this.curTeam.name;
@@ -1265,6 +1265,8 @@
 				buf += '<input type="hidden" name="author" id="pasteAuthor">';
 				buf += '<input type="hidden" name="notes" id="pasteNotes">';
 				buf += '<p><button name="psExport" type="submit" class="button exportbutton"> <i class="fa fa-upload"></i> Upload to Showdown database (saves across devices)</button>';
+				var privacy = (Storage.prefs('uploadprivacy') || typeof Storage.prefs('uploadprivacy') !== 'boolean') ? 'checked' : '';
+				buf += ' <label><small>(Private:</small> <input type="checkbox" name="teamprivacy" ' + privacy + ' /><small>)</small></label>';
 				buf += '</p>';
 				buf += '<p><button name="pokepasteExport" type="submit" class="button exportbutton"><i class="fa fa-upload"></i> Upload to PokePaste</button></p>';
 				if (this.curTeam.format.includes('vgc')) {
@@ -1293,7 +1295,7 @@
 					buf += '<div class="setmenu setmenu-left"><button name="undeleteSet" class="button"><i class="fa fa-undo"></i> Undo Delete</button></div>';
 				}
 				buf += '<div class="setmenu"><button name="importSet"><i class="fa fa-upload"></i>Import</button></div>';
-				buf += '<div class="setchart pixelated" style="background-image:url(' + Dex.resourcePrefix + 'sprites/gen5/0.png);"><div class="setcol setcol-icon"><div class="setcell-sprite"></div><div class="setcell setcell-pokemon"><label>Pok&eacute;mon</label><input type="text" name="pokemon" class="textbox chartinput" value="" autocomplete="off" /></div></div></div>';
+				buf += '<div class="setchart" style="background-image:url(' + Dex.resourcePrefix + 'sprites/gen5/0.png);"><div class="setcol setcol-icon"><div class="setcell-sprite"></div><div class="setcell setcell-pokemon"><label>Pok&eacute;mon</label><input type="text" name="pokemon" class="textbox chartinput" value="" autocomplete="off" /></div></div></div>';
 				buf += '</li>';
 				return buf;
 			}
@@ -1301,8 +1303,7 @@
 			buf += '<div class="setchart-nickname">';
 			buf += '<label>Nickname</label><input type="text" name="nickname" class="textbox" value="' + BattleLog.escapeHTML(set.name || '') + '" placeholder="' + BattleLog.escapeHTML(species.baseSpecies) + '" />';
 			buf += '</div>';
-			var spriteData = Dex.getTeambuilderSpriteData(set, this.curTeam.dex);
-			buf += '<div class="setchart' + (spriteData.pixelated ? ' pixelated' : '') + '" style="' + Dex.getTeambuilderSprite(set, this.curTeam.dex) + ';">';
+			buf += '<div class="setchart" style="' + Dex.getTeambuilderSprite(set, this.curTeam.gen) + ';">';
 
 			// icon
 			buf += '<div class="setcol setcol-icon">';
@@ -2042,9 +2043,7 @@
 			var set = this.curSet;
 			if (!set) return;
 
-			this.$('.setchart')
-				.attr('style', Dex.getTeambuilderSprite(set, this.curTeam.dex))
-				.toggleClass('pixelated', !!Dex.getTeambuilderSpriteData(set, this.curTeam.dex).pixelated);
+			this.$('.setchart').attr('style', Dex.getTeambuilderSprite(set, this.curTeam.gen));
 
 			this.$('.pokemonicon-' + this.curSetLoc).css('background', Dex.getPokemonIcon(set).substr(11));
 
@@ -2283,10 +2282,6 @@
 				format = format.substr(4);
 			}
 			var generation = ['rb', 'gs', 'rs', 'dp', 'bw', 'xy', 'sm', 'ss', 'sv'][generationNumber - 1];
-			if (format.startsWith('champions')) {
-				generation = 'champions';
-				format = format.slice(9);
-			}
 			if (format === 'battlespotdoubles') {
 				smogdexid += '/vgc15';
 			} else if (format === 'doublesou' || format === 'doublesuu') {
@@ -3506,10 +3501,6 @@
 			// only available through an event with 31 Spe IVs
 			if (set.species.startsWith('Terapagos')) minSpe = false;
 
-			if (this.curTeam.format.includes('1v1') || this.curTeam.format.includes('categoryswap') ||
-				this.curTeam.format.includes('partnersincrime') || this.curTeam.format.includes('typesplit') ||
-				this.curTeam.format.includes('noholdsbarred') ||
-				this.curTeam.format.includes('champions')) return;
 			if (this.curTeam.format === 'gen7hiddentype') return;
 
 			var minAtk = true;
@@ -3781,8 +3772,7 @@
 				var formid = forms[i].substring(baseid.length);
 				var form = (formid ? formid[0].toUpperCase() + formid.slice(1) : '');
 				buf += '<button name="setForm" value="' + form + '" style="';
-				buf += 'background-image: url(' + Dex.resourcePrefix + data.spriteDir + '/' + spriteid + '.png); ' + spriteDim + resize + '" class="option';
-				if (data.pixelated) buf += ' pixelated';
+				buf += 'background-image: url(' + spriteDir + '/' + baseid + (form ? '-' + formid : '') + '.png); ' + spriteDim + '" class="option';
 				buf += (form === (species.forme || '') ? ' cur' : '') + '"></button>';
 			}
 			buf += '<div style="clear:both"></div>';

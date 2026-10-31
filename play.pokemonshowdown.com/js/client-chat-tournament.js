@@ -1,7 +1,5 @@
 (function ($) {
 
-	var NEXT_AVAILABLE_PLAYER = '(next available player)';
-
 	function arrayToPhrase(array, finalSeparator) {
 		if (array.length <= 1)
 			return array.join();
@@ -95,25 +93,25 @@
 					'<div class="tournament-toggle">Toggle</div>' +
 				'</div>' +
 				'<div class="tournament-box">' +
-				'	<div class="tournament-bracket"></div>' +
-				'	<div class="tournament-tools">' +
-				'		<div class="tournament-team"></div>' +
-				'		<button class="button tournament-join">Join</button><button class="button tournament-validate"><i class="fa fa-check"></i> Validate</button> <button class="button tournament-leave">Leave</button>' +
-				'		<div class="tournament-nomatches">Waiting for battles to become available...</div>' +
-				'		<div class="tournament-challenge">' +
-				'			<div class="tournament-challenge-user"></div>' +
-				'			<button class="button tournament-challenge-challenge"><strong>Ready!</strong></button><span class="tournament-challenge-user-menu"></span>' +
-				'		</div>' +
-				'		<div class="tournament-challengeby"></div>' +
-				'		<div class="tournament-challenging">' +
-				'			<div class="tournament-challenging-message"></div>' +
-				'			<div><small>Cancel readiness to change your submitted team.</small></div><button class="button tournament-challenge-cancel">Cancel readiness</button>' +
-				'		</div>' +
-				'		<div class="tournament-challenged">' +
-				'			<div class="tournament-challenged-message"></div>' +
-				'			<button class="button tournament-challenge-accept"><strong>Ready!</strong></button>' +
-				'		</div>' +
-				'	</div>' +
+					'<div class="tournament-bracket"></div>' +
+					'<div class="tournament-tools">' +
+						'<div class="tournament-team"></div>' +
+						'<button class="button tournament-join">Join</button><button class="button tournament-validate"><i class="fa fa-check"></i> Validate</button> <button class="button tournament-leave">Leave</button>' +
+						'<div class="tournament-nomatches">Waiting for battles to become available...</div>' +
+						'<div class="tournament-challenge">' +
+							'<div class="tournament-challenge-user"></div>' +
+							'<button class="button tournament-challenge-challenge"><strong>Ready!</strong></button><span class="tournament-challenge-user-menu"></span>' +
+						'</div>' +
+						'<div class="tournament-challengeby"></div>' +
+						'<div class="tournament-challenging">' +
+							'<div class="tournament-challenging-message"></div>' +
+							'<button class="button tournament-challenge-cancel">Cancel</button>' +
+						'</div>' +
+						'<div class="tournament-challenged">' +
+							'<div class="tournament-challenged-message"></div>' +
+							'<button class="button tournament-challenge-accept"><strong>Ready!</strong></button>' +
+						'</div>' +
+					'</div>' +
 				'</div>');
 
 			this.$title = $wrapper.find('.tournament-title');
@@ -367,7 +365,6 @@
 					break;
 
 				case 'updateend':
-					var previousChallenged = this.info.challenged;
 					$.extend(this.info, this.updates);
 					if (!this.info.isActive) {
 						this.$wrapper.addClass("active");
@@ -437,24 +434,17 @@
 						if ('challenging' in this.updates) {
 							this.$challenging.toggleClass('active', !!this.info.challenging);
 							if (this.info.challenging) {
-								this.$challengingMessage.text(this.info.challenging === NEXT_AVAILABLE_PLAYER ?
-									"Ready! Waiting for your next opponent..." : "Ready! Waiting for " + this.info.challenging + "...");
+								this.$challengingMessage.text("Waiting for " + this.info.challenging + "...");
 							}
 						}
 
 						if ('challenged' in this.updates) {
 							if (this.info.challenged) {
-								this.$challengedMessage.text(this.info.challenged === NEXT_AVAILABLE_PLAYER ?
-									"You can ready up now. Your opponent will be assigned when a match is available." : "vs. " + this.info.challenged);
-								if (this.info.challenged !== previousChallenged) {
-									this.toggleBoxVisibility(true);
-									this.room.closeNotification('tournament-challenged');
-									if (notify) this.room.notifyOnce(this.info.challenged === NEXT_AVAILABLE_PLAYER ?
-										"Ready for your next tournament battle?" : "Tournament battle against " + this.info.challenged,
-									"Room: " + this.room.title, 'tournament-challenged');
+								this.$challengedMessage.text("vs. " + this.info.challenged);
+								this.toggleBoxVisibility(true);
+								if (!this.$challenged.hasClass('active')) {
+									if (notify) this.room.notifyOnce("Tournament challenge from " + this.info.challenged, "Room: " + this.room.title, 'tournament-challenged');
 								}
-							} else {
-								this.room.closeNotification('tournament-challenged');
 							}
 							this.$challenged.toggleClass('active', !!this.info.challenged);
 						}

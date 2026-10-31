@@ -7,33 +7,10 @@
  * @license MIT
  */
 
-import preact from "../js/lib/preact";
-import { PS, PSRoom, type RoomOptions } from "./client-main";
-import { PSPanelWrapper, PSRoomPanel } from "./panels";
-import { BattleLog } from "./battle-log";
-import { TL } from "./battle-dex";
-import type { Args } from "./battle-text-parser";
-
-export class SanitizedHTML extends preact.Component<{ children: string }> {
-	override componentDidMount() {
-		this.updateHTML(this.props.children);
-	}
-	override shouldComponentUpdate(nextProps: { children: string }) {
-		if (nextProps.children !== this.props.children) this.updateHTML(nextProps.children);
-		return false;
-	}
-	updateHTML(html: string) {
-		this.base!.innerHTML = BattleLog.sanitizeHTML(html);
-	}
-	override render() {
-		return <div></div>;
-	}
-}
-
 class PageRoom extends PSRoom {
 	readonly classType: string = 'html';
 	readonly page?: string = this.id.split("-")[1];
-	override connectMode: PSRoom['connectMode'] = 'normal';
+	readonly canConnect = true;
 
 	loading: boolean = true;
 	htmlData?: string;
@@ -46,18 +23,13 @@ class PageRoom extends PSRoom {
 
 	constructor(options: RoomOptions) {
 		super(options);
-		if (options.connectMode !== undefined) this.connectMode = options.connectMode;
 		this.connect();
 	}
-	override connect() {
-		if (PagePanel.clientRooms.hasOwnProperty(this.id.split('-')[1])) {
-			this.connectMode = null;
-		} else if (!this.connected && (
-			this.connectMode === 'normal' || this.connectMode === 'pending-reconnect' ||
-			this.connectMode === 'pending-login'
-		)) {
-			PS.send(`/join ${this.id}`);
-			this.connected = 'pending';
+	connect() {
+		if (!this.connected) {
+			PS.send(`|/join ${this.id}`);
+			this.connected = true;
+			this.connectWhenLoggedIn = false;
 		}
 	}
 }
@@ -66,8 +38,8 @@ function PageLadderHelp(props: {room: PageRoom}) {
 	const {room} = props;
 	return <div class="ladder pad">
 		<p>
-			<button class="button" data-href="/ladder" data-target="replace">
-				<i class="fa fa-chevron-left" aria-hidden></i> {TL`[All formats]`}
+			<button name="selectFormat" data-href="ladder" data-target="replace">
+				<i class="fa fa-chevron-left"></i> Format List
 			</button>
 		</p>
 		<h3>How the ladder works</h3>
@@ -143,7 +115,7 @@ class PagePanel extends PSRoomPanel<PageRoom> {
 			renderPage = this.clientRooms[room.page];
 		} else {
 			if (room.loading) {
-				renderPage = <p>{TL`Loading...`}</p>;
+				renderPage = <p>Loading...</p>;
 			} else {
 				renderPage = <div class="page-html-container">
 					<SanitizedHTML>{room.htmlData || ''}</SanitizedHTML>

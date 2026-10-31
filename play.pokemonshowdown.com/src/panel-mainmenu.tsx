@@ -5,25 +5,8 @@
  * @license AGPLv3
  */
 
-import preact from "../js/lib/preact";
-import { PSLoginServer } from "./client-connection";
-import { PSBackground } from "./client-core";
-import {
-	Config, PS, PSRoom, type PSRoomFocusOptions, type RoomID, type Team,
-} from "./client-main";
-import { PSIcon, PSPanelErrorBoundary, PSPanelWrapper, PSRoomPanel, PSView, ReconnectTimer } from "./panels";
-import type { BattlesRoom } from "./panel-battle";
-import type { ChatRoom } from "./panel-chat";
-import type { LadderFormatRoom } from "./panel-ladder";
-import type { RoomsRoom } from "./panel-rooms";
-import { TeamBox, type SelectType } from "./panel-teamdropdown";
-import { Dex, TL, toID, type ID } from "./battle-dex";
-import type { Args } from "./battle-text-parser";
-import { BattleLog } from "./battle-log"; // optional
-
-export type RoomInfo = {
-	title: string, id?: RoomID, desc?: string, userCount?: number, section?: string, privacy?: 'hidden',
-	spotlight?: string, subRooms?: string[],
+type RoomInfo = {
+	title: string, desc?: string, userCount?: number, section?: string, spotlight?: string, subRooms?: string[],
 };
 
 class MainMenuRoom extends PSRoom {
@@ -42,74 +25,7 @@ class MainMenuRoom extends PSRoom {
 		chat?: RoomInfo[],
 		sectionTitles?: string[],
 	} = {};
-	searchCountdown: {
-		format: string, packedTeam: string, countdown: number, timer: ReturnType<typeof setInterval>,
-	} | null = null;
-	/** used to track the moment between "search sent" and "server acknowledged search sent" */
-	teamSent: string | null = null;
-	search: { searching: string[], games: Record<RoomID, string> | null } = { searching: [], games: null };
-	disallowSpectators: boolean | null = PS.prefs.disallowspectators;
-	lastChallenged: number | null = null;
-	adjustPrivacy() {
-		PS.prefs.set('disallowspectators', this.disallowSpectators);
-		if (this.disallowSpectators) return '/noreply /hidenext \n';
-		return '';
-	}
-	startSearch = (format: string, team?: Team, parentElem?: HTMLElement | null) => {
-		PS.requestNotifications();
-		if (this.searchCountdown) {
-			PS.alert(TL`Wait for this countdown to finish first...`, { parentElem });
-			return;
-		} else if (this.search.searching.includes(format)) {
-			PS.alert(TL`You're already searching for a ${BattleLog.formatName(format)} battle...`, { parentElem });
-			return;
-		}
-		this.searchCountdown = {
-			format,
-			packedTeam: team?.packedTeam || '',
-			countdown: 3,
-			timer: setInterval(this.doSearchCountdown, 1000),
-		};
-		this.update(null);
-	};
-	searchingFormat() {
-		return this.searchCountdown?.format || this.teamSent ||
-			this.search.searching?.[this.search.searching.length - 1] || null;
-	}
-	cancelSearch = () => {
-		if (this.searchCountdown) {
-			clearTimeout(this.searchCountdown.timer);
-			this.searchCountdown = null;
-			this.update(null);
-			return true;
-		}
-		if (this.teamSent || this.search.searching?.length) {
-			this.teamSent = null;
-			PS.send(`/cancelsearch`);
-			this.update(null);
-			return true;
-		}
-		return false;
-	};
-	doSearchCountdown = () => {
-		if (!this.searchCountdown) return; // ??? race???
-
-		this.searchCountdown.countdown--;
-		if (this.searchCountdown.countdown <= 0) {
-			this.doSearch(this.searchCountdown);
-			clearTimeout(this.searchCountdown.timer);
-			this.searchCountdown = null;
-		}
-		this.update(null);
-	};
-	doSearch = (search: NonNullable<typeof this.searchCountdown>) => {
-		this.teamSent = search.format;
-		const privacy = this.adjustPrivacy();
-		PS.send(`/utm ${search.packedTeam}`);
-		PS.send(`${privacy}/search ${search.format}`);
-	};
-	override handleLine(args: Args): boolean {
-		if (super.handleLine(args)) return true;
+	receiveLine(args: Args) {
 		const [cmd] = args;
 		switch (cmd) {
 		case 'challstr': {
@@ -122,70 +38,33 @@ class MainMenuRoom extends PSRoom {
 				if (!res.loggedin) return;
 				this.send(`/trn ${res.username},0,${res.assertion}`);
 			});
-			return true;
+			return;
 		} case 'updateuser': {
-			const [, fullName, namedCode, avatar, settingsJSON] = args;
-			const named = namedCode === '1';
-			if (named) PS.user.initializing = false;
-			if (settingsJSON) {
-				const serverSettings = JSON.parse(settingsJSON);
-				// don't trust server setting for language
-				delete serverSettings.language;
-				PS.prefs.set('serversettings', { ...PS.prefs.serversettings, ...serverSettings });
-			}
-			void Dex.loadTextData().then(() => PS.updateTranslatedText());
-			PS.user.setName(fullName, named, avatar);
-			PS.teams.loadRemoteTeams();
-			return true;
+			const [, fullName, namedCode, avatar] = args;
+			PS.user.setName(fullName, namedCode === '1', avatar);
+			return;
 		} case 'updatechallenges': {
 			const [, challengesBuf] = args;
 			this.receiveChallenges(challengesBuf);
-			return true;
-		} case 'updatesearch': {
-			const [, searchBuf] = args;
-			this.receiveSearch(searchBuf);
-			return true;
+			return;
 		} case 'queryresponse': {
 			const [, queryId, responseJSON] = args;
 			this.handleQueryResponse(queryId as ID, JSON.parse(responseJSON));
-			return true;
+			return;
 		} case 'pm': {
 			const [, user1, user2, message] = args;
 			this.handlePM(user1, user2, message);
-			let sideRoom = PS.rightPanel as ChatRoom;
-			if (sideRoom?.type === "chat" && PS.prefs.inchatpm) {
-				sideRoom.log?.add(args, undefined, undefined, PS.prefs.timestamps.chatrooms);
-			}
-			return true;
-		} case 'customgroups': {
-			const [, groupsList] = args;
-			PS.server.parseGroups(groupsList);
-			return true;
+			return;
 		} case 'formats': {
 			this.parseFormats(args);
-			return true;
+			return;
 		} case 'popup': {
-			let [, message] = args;
-			for (const roomid in PS.rooms) {
-				const room = PS.rooms[roomid] as ChatRoom | MainMenuRoom;
-				if (room.teamSent) {
-					room.teamSent = null;
-					room.update(null);
-				}
-				if (room.type === 'team') (room as any).cancelUpload();
-			}
-			let width: number | undefined;
-			if (message.startsWith('|wide|')) {
-				message = message.slice(6);
-				width = 960;
-			}
-			PS.alert(message.replace(/\|\|/g, '\n'), { width });
-			return true;
-		}
-		}
+			const [, message] = args;
+			alert(message.replace(/\|\|/g, '\n'));
+			return;
+		}}
 		const lobby = PS.rooms['lobby'];
-		if (lobby) lobby.receiveBatch([args]);
-		return true;
+		if (lobby) lobby.receiveLine(args);
 	}
 	receiveChallenges(dataBuf: string) {
 		let json;
@@ -336,7 +215,6 @@ class MainMenuRoom extends PSRoom {
 				}
 			}
 		}
-		window.BattleFormats = Dex.formats.load(BattleFormats);
 		PS.teams.update('format');
 	}
 	handlePM(user1: string, user2: string, message: string) {
@@ -352,7 +230,7 @@ class MainMenuRoom extends PSRoom {
 			}, true);
 			room = PS.rooms[roomid]!;
 		}
-		if (message) room.receiveBatch([[`c`, user1, message]]);
+		room.receiveLine([`c`, user1, message]);
 		PS.update();
 	}
 	/**
@@ -382,15 +260,8 @@ class MainMenuRoom extends PSRoom {
 			} else {
 				Object.assign(userdetails, response);
 			}
-			if (userid === PS.user.userid) {
-				if (response.avatar !== undefined && PS.user.avatar !== `${response.avatar}`) {
-					PS.user.avatar = `${response.avatar}`;
-					PS.user.update(null);
-				}
-			}
-			PS.rooms[`user-${userid}`]?.update(null);
-			PS.rooms[`viewuser-${userid}`]?.update(null);
-			PS.rooms[`users`]?.update(null);
+			const userRoom = PS.rooms[`user-${userid}`] as UserRoom;
+			if (userRoom) userRoom.update(null);
 			break;
 		case 'rooms':
 			if (response.pspl) {
@@ -421,39 +292,9 @@ class MainMenuRoom extends PSRoom {
 			}
 			break;
 		case 'laddertop':
-			for (const [roomid, ladderRoom] of Object.entries(PS.rooms)) {
-				if (roomid.startsWith('ladder-')) {
-					(ladderRoom as LadderFormatRoom).update(response);
-				}
-			}
-			break;
-		case 'teamupload':
-			if (PS.teams.uploading) {
-				const team = PS.teams.uploading;
-				team.teamid = response.teamid;
-				team.uploaded = {
-					teamid: response.teamid,
-					notLoaded: false,
-					private: response.privacy,
-				};
-				PS.rooms[`team-${team.key}`]?.update(null);
-				PS.rooms.teambuilder?.update(null);
-				PS.teams.uploading = null;
-			}
-			break;
-		case 'teamupdate':
-			for (const team of PS.teams.list) {
-				if (team.teamid === Number(response.teamid)) {
-					team.uploaded = {
-						teamid: team.teamid,
-						notLoaded: false,
-						private: response.privacy,
-					};
-					PS.rooms[`team-${team.key}`]?.update(null);
-					PS.rooms.teambuilder?.update(null);
-					PS.teams.uploading = null;
-					break;
-				}
+			const ladderRoomEntries = Object.entries(PS.rooms).filter(entry => entry[0].startsWith('ladder'));
+			for (const [, ladderRoom] of ladderRoomEntries) {
+				(ladderRoom as LadderRoom).update(response);
 			}
 			break;
 		}
@@ -461,167 +302,43 @@ class MainMenuRoom extends PSRoom {
 }
 
 class NewsPanel extends PSRoomPanel {
-	static readonly id = 'news';
-	static readonly routes = ['news'];
-	static readonly title = 'News';
-	static readonly location = 'mini-window';
-	static getTitle() {
-		return TL`News`;
-	}
-	override componentDidMount() {
-		super.componentDidMount();
-		this.startNewsMinimized();
-	}
-	startNewsMinimized() {
-		if (window.innerWidth < 628) {
-			// News is always minimized on mobile
-			this.props.room.minimized = true;
-			PS.mainmenu.update(null);
-			return;
-		}
-
-		const readNewsId = Number(PS.prefs.newsid);
-		if (!readNewsId) return;
-		let hasUnread = false;
-		for (const entry of this.base!.querySelectorAll('.newsentry')) {
-			const unread = Number(entry.getAttribute('data-newsid')) > readNewsId;
-			entry.classList.toggle('unread', unread);
-			if (unread) hasUnread = true;
-		}
-		if (!hasUnread) {
-			this.props.room.minimized = true;
-			PS.mainmenu.update(null);
-		}
-	}
-	markAsRead = (e: MouseEvent) => {
-		if (e.shiftKey || e.metaKey || e.ctrlKey || !window.getSelection()?.isCollapsed) return;
-		if (!PS.newsId) return;
-		PS.prefs.set('newsid', Number(PS.newsId));
-		for (const entry of this.base!.querySelectorAll('.unread')) {
-			entry.classList.remove('unread');
-		}
-	};
-	override render() {
-		return <PSPanelWrapper room={this.props.room} fullSize>
-			<div class="readable-bg" onClick={this.markAsRead} dangerouslySetInnerHTML={{ __html: PS.newsHTML }}></div>
+	render() {
+		return <PSPanelWrapper room={this.props.room} scrollable>
+			<div class="mini-window-body" dangerouslySetInnerHTML={{__html: PS.newsHTML}}></div>
 		</PSPanelWrapper>;
 	}
 }
 
 class MainMenuPanel extends PSRoomPanel<MainMenuRoom> {
-	static readonly id = 'mainmenu';
-	static readonly routes = [''];
-	static readonly Model = MainMenuRoom;
-	static readonly icon = <i class="fa fa-home" aria-hidden></i>;
-	static getTitle() {
-		return TL`Home`;
+	focus() {
+		(this.base!.querySelector('button.big') as HTMLButtonElement).focus();
 	}
-	override componentDidMount() {
-		super.componentDidMount();
-		this.subscribeTo(PSBackground);
-		Config.includes?.htmlDidMount?.();
-	}
-	override focus(options?: PSRoomFocusOptions) {
-		if (!options?.preventScroll) PSView.scrollToRoom();
-		if (PSView.hasTapped) return;
-
-		PSView.politeFocus(this.base?.querySelector<HTMLButtonElement>('.formatselect'));
-	}
-	submitSearch = (ev: Event, format: string, team?: Team) => {
-		if (!PS.user.named) {
-			PS.join('login' as RoomID, {
-				parentElem: this.base!.querySelector<HTMLElement>('.big.button'),
-			});
-			return;
-		}
-		PS.mainmenu.startSearch(format, team, ev.target as HTMLElement);
+	submit = (e: Event) => {
+		alert('todo: implement');
 	};
 	handleDragStart = (e: DragEvent) => {
-		const room = PS.getRoom(e.currentTarget);
-		if (!room) return;
-		const foreground = (PS.leftPanel.id === room.id || PS.rightPanel?.id === room.id);
-		PS.dragging = { type: 'room', roomid: room.id, foreground };
-	};
-	handleDragEnter = (e: DragEvent) => {
-		// console.log('dragenter ' + e.dataTransfer!.dropEffect);
-		e.preventDefault();
-		if (PS.dragging?.type !== 'room') return;
-		const draggingRoom = PS.dragging.roomid;
-		if (draggingRoom === null) return;
-
-		const draggedOverRoom = PS.getRoom(e.target);
-		if (draggingRoom === draggedOverRoom?.id) return;
-
-		const index = PS.miniRoomList.indexOf(draggedOverRoom?.id as any);
-		if (index >= 0) {
-			PS.dragOnto(PS.rooms[draggingRoom], 'mini-window', index);
-		} else if (PS.rooms[draggingRoom]?.location !== 'mini-window') {
-			PS.dragOnto(PS.rooms[draggingRoom], 'mini-window', 0);
-		}
-
-		// dropEffect !== 'none' prevents bounce-back animation in
-		// Chrome/Safari/Opera
-		// if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+		const roomid = (e.currentTarget as HTMLElement).getAttribute('data-roomid') as RoomID;
+		PS.dragging = {type: 'room', roomid};
 	};
 	renderMiniRoom(room: PSRoom) {
-		return <PSPanelErrorBoundary key={room.id} room={room} />;
+		const roomType = PS.roomTypes[room.type];
+		const Panel = roomType ? roomType.Component : PSRoomPanel;
+		return <Panel key={room.id} room={room} />;
 	}
-	handleClickMinimize = (e: MouseEvent) => {
-		if ((e.target as Element)?.getAttribute('data-cmd')) {
-			return;
-		}
-		if (((e.target as Element)?.parentNode as Element)?.getAttribute('data-cmd')) {
-			return;
-		}
-		const room = PS.getRoom(e.currentTarget);
-		if (room) {
-			room.minimized = !room.minimized;
-			if (!room.minimized) PS.queueFocus(room);
-			this.forceUpdate();
-		}
-	};
-	handleSearchPrefs = (ev: Event) => {
-		// const setting = (ev.currentTarget as HTMLInputElement).name;
-		const value = (ev.currentTarget as HTMLInputElement).checked;
-		PS.prefs.set('serversettings', { ...PS.prefs.serversettings, allowLadderBots: value });
-		PS.send(value ? `/noreply /allowbots` : `/noreply /blockbots`);
-	};
 	renderMiniRooms() {
 		return PS.miniRoomList.map(roomid => {
 			const room = PS.rooms[roomid]!;
-			const notifying = room.notifications.length ? ' notifying' : room.isSubtleNotifying ? ' subtle-notifying' : '';
-			return <div
-				class={`mini-window${room.minimized ? ' collapsed' : ''}${room === PS.room ? ' focused' : ''}`}
-				key={roomid} data-roomid={roomid}
-			>
-				<h3
-					class={`mini-window-header${notifying}`} draggable onDragStart={this.handleDragStart} onClick={this.handleClickMinimize}
-				>
-					<button class="closebutton" data-cmd="/close" aria-label={TL`[Close]`} tabIndex={-1}>
-						<i class="fa fa-times-circle" aria-hidden></i>
-					</button>
-					<button class="maximizebutton" data-cmd="/maximize" tabIndex={-1} aria-label={TL`[Maximize]`}>
-						<i class="fa fa-stop-circle" aria-hidden></i>
-					</button>
-					<button class="minimizebutton" tabIndex={-1} aria-label={TL`[Expand/collapse]`}>
-						<i class="fa fa-minus-circle" aria-hidden></i>
-					</button>
-					{room.getTitle()}
-				</h3>
-				{this.renderMiniRoom(room)}
+			return <div class="pmbox">
+				<div class="mini-window">
+					<h3 draggable onDragStart={this.handleDragStart} data-roomid={roomid}>
+						<button class="closebutton" name="closeRoom" value={roomid} aria-label="Close" tabIndex={-1}><i class="fa fa-times-circle"></i></button>
+						<button class="minimizebutton" tabIndex={-1}><i class="fa fa-minus-circle"></i></button>
+						{room.title}
+					</h3>
+					{this.renderMiniRoom(room)}
+				</div>
 			</div>;
 		});
-	}
-	renderGames() {
-		if (!PS.mainmenu.search.games) return null;
-
-		// This does not use the word "game" because it includes things like help tickets
-		return <div class="menugroup">
-			<p class="label">{TL`You are in:`}</p>
-			{Object.entries(PS.mainmenu.search.games).map(([roomid, gameName]) => <div>
-				<a class="blocklink" href={`${roomid}`}>{gameName}</a>
-			</div>)}
-		</div>;
 	}
 	renderSearchButton() {
 		if (PS.down) {
@@ -642,157 +359,67 @@ class MainMenuPanel extends PSRoomPanel<MainMenuRoom> {
 		}
 
 		if (!PS.user.userid || PS.isOffline) {
-			return <TeamForm class="menugroup" onSubmit={this.submitSearch} selectType="search">
-				<button class="mainmenu1 mainmenu big button disabled" disabled name="search">
-					<em>{PS.isOffline ? [<span class="fa-stack fa-lg">
-						<i class="fa fa-plug fa-flip-horizontal fa-stack-1x" aria-hidden></i>
-						<i class="fa fa-ban fa-stack-2x text-danger" aria-hidden></i>
-					</span>, ' ', TL`Disconnected`] : TL`Connecting...`}</em>
+			return <TeamForm class="menugroup" onSubmit={this.submit}>
+				<button class="mainmenu1 big button disabled" name="search">
+					<em>{PS.isOffline ? "Disconnected" : "Connecting..."}</em>
 				</button>
-				{PS.isOffline && <p class="buttonbar">
-					<button class="button" data-cmd="/reconnect">
-						<i class="fa fa-plug" aria-hidden></i> <strong>{TL`[Reconnect]`}</strong>
-					</button> {}
-					<ReconnectTimer />
-				</p>}
 			</TeamForm>;
 		}
 
-		return <TeamForm
-			class="menugroup" format={PS.mainmenu.searchingFormat() || undefined}
-			selectType="search" onSubmit={this.submitSearch}
-		>
-			<p>
-				<label class="checkbox" title={TL`Battles against bots will be unrated.`}>
-					<input
-						name="allowbots" checked={PS.prefs.serversettings.allowLadderBots || false}
-						type="checkbox" onChange={this.handleSearchPrefs}
-					/> {TL`Allow matching into bots`}
-				</label>
-				<button class="button small" data-href="battleoptions">
-					{TL`[Battle options]`} <i class="fa fa-caret-down" aria-hidden></i>
-				</button></p>
-			{PS.mainmenu.searchCountdown ? (
-				<>
-					<button class="mainmenu1 mainmenu big button disabled" disabled><strong>
-						<i class="fa fa-refresh fa-spin" aria-hidden></i> {TL`Searching in ${PS.mainmenu.searchCountdown.countdown}...`}
-					</strong></button>
-					<p class="buttonbar"><button class="button" data-cmd="/cancelsearch">{TL`[Cancel]`}</button></p>
-				</>
-			) : PS.mainmenu.searchingFormat() ? (
-				<>
-					<button class="mainmenu1 mainmenu big button disabled" disabled>
-						<strong><i class="fa fa-refresh fa-spin" aria-hidden></i> {TL`Searching...`}</strong>
-					</button>
-					<p class="buttonbar"><button class="button" data-cmd="/cancelsearch">{TL`[Cancel]`}</button></p>
-				</>
-			) : (
-				<button class="mainmenu1 mainmenu big button" type="submit">
-					<strong>{TL`[Battle!]`}</strong><br />
-					<small>{TL`Find a random opponent`}</small>
-				</button>
-			)}
+		return <TeamForm class="menugroup" onSubmit={this.submit}>
+			<button class="mainmenu1 big button" name="search">
+				<strong>Battle!</strong><br />
+				<small>Find a random opponent</small>
+			</button>
 		</TeamForm>;
 	}
-	renderBackgroundCredit() {
-		const attrib = PSBackground.attrib;
-		if (!attrib) return null;
-		return (
-			<small>
-				<a href={attrib.url} target="_blank" class="subtle">
-					"{attrib.title}" <small>{TL`background by ${attrib.artist}`}</small>
-				</a>
-			</small>
-		);
-	}
-	override render() {
+	render() {
 		const onlineButton = ' button' + (PS.isOffline ? ' disabled' : '');
-		const tinyLayout = this.props.room.width < 620 ? ' tiny-layout' : '';
-		return <PSPanelWrapper room={this.props.room} onDragEnter={this.handleDragEnter}>
-			<div class={`mainmenu-mini-windows${tinyLayout}`}>
-				{!PS.leftPanelWidth && Config.includes?.mainmenuHTML && (
-					<div dangerouslySetInnerHTML={{ __html: Config.includes.mainmenuHTML }} />
-				)}
-				{this.renderMiniRooms()}
-			</div>
-			<div class={`mainmenu${tinyLayout}`}>
-				<div class="mainmenu-left">
-					{this.renderGames()}
-
-					{this.renderSearchButton()}
-
-					<div class="menugroup">
-						<p><a class="mainmenu2 mainmenu button" href="teambuilder">{TL`[Teambuilder]`}</a></p>
-						<p><a class={"mainmenu3 mainmenu" + onlineButton} href="ladder">{TL`Ladder`}</a></p>
-						<p><a class={"mainmenu4 mainmenu" + onlineButton} href="view-tournaments-all">{TL`Tournaments`}</a></p>
+		return <PSPanelWrapper room={this.props.room} scrollable>
+			<div class="mainmenuwrapper">
+				<div class="leftmenu">
+					<div class="activitymenu">
+						{this.renderMiniRooms()}
 					</div>
 					<div class="mainmenu">
 						{this.renderSearchButton()}
 
-					<div class="menugroup">
-						<p><a class={"mainmenu4 mainmenu" + onlineButton} href="battles">{TL`Watch a battle`}</a></p>
-						<p><a class={"mainmenu5 mainmenu" + onlineButton} href="users">{TL`Find a user`}</a></p>
-						<p><a class={"mainmenu6 mainmenu" + onlineButton} href="view-friends-all">{TL`Friends`}</a></p>
-						<p><a class={"mainmenu7 mainmenu" + onlineButton} href="resources">{TL`Info & Resources`}</a></p>
+						<div class="menugroup">
+							<p><button class="mainmenu2 button" name="joinRoom" value="teambuilder">Teambuilder</button></p>
+							<p><button class={"mainmenu3" + onlineButton} name="joinRoom" value="ladder">Ladder</button></p>
+						</div>
+
+						<div class="menugroup">
+							<p><button class={"mainmenu4" + onlineButton} name="joinRoom" value="battles">Watch a battle</button></p>
+							<p><button class={"mainmenu5" + onlineButton} name="finduser">Find a user</button></p>
+						</div>
 					</div>
 				</div>
 				<div class="rightmenu" style={{display: PS.leftRoomWidth ? 'none' : 'block'}}>
 					<div class="menugroup">
-						<p><a class={"mainmenu1 mainmenu" + onlineButton} href="rooms">{TL`Chat rooms`}</a></p>
-						{PS.server.id !== 'showdown' && (
-							<p><a class={"mainmenu2 mainmenu" + onlineButton} href="lobby">{TL`Lobby chat`}</a></p>
-						)}
+						{PS.server.id === 'showdown' ?
+							<p><button class={"mainmenu1" + onlineButton} name="joinRoom" value="rooms">Join chat</button></p>
+						:
+							<p><button class={"mainmenu1" + onlineButton} name="joinRoom" value="lobby">Join lobby chat</button></p>
+						}
 					</div>
 				</div>
 				<div class="mainmenufooter">
 					<div class="bgcredit"></div>
 					<small>
-						<a href={`//${Config.routes.dex}/`} target="_blank">{TL`Pokédex`}</a> | {}
-						<a href={`//${Config.routes.replays}/`} target="_blank">{TL`Replays`}</a> | {}
-						<a href="//smogon.com/forums/" target="_blank">{TL`Forum`}</a> | {}
-						<a href={`//${Config.routes.root}/rules`} target="_blank">{TL`Rules`}</a> | {}
-						<a href={`//${Config.routes.root}/credits`} target="_blank">{TL`Credits`}</a> | {}
-						<a href={`//${Config.routes.root}/privacy`} target="_blank">{TL`Privacy`}</a>
+						<a href={`//${Config.routes.dex}/`} target="_blank">Pok&eacute;dex</a> | {}
+						<a href={`//${Config.routes.replays}/`} target="_blank">Replays</a> | {}
+						<a href={`//${Config.routes.root}/rules`} target="_blank">Rules</a> | {}
+						<a href={`//${Config.routes.dex}/credits`} target="_blank">Credits</a> | {}
+						<a href="//smogon.com/forums/" target="_blank">Forum</a>
 					</small>
-					<CCPAIntercept />
 				</div>
 			</div>
 		</PSPanelWrapper>;
 	}
 }
 
-export class CCPAIntercept extends preact.Component {
-	intercepted = false;
-	override shouldComponentUpdate() {
-		this.intercept();
-		return false;
-	}
-	override componentDidMount() {
-		this.intercept();
-		setTimeout(() => this.intercept(), 500);
-		setTimeout(() => this.intercept(), 1000);
-		setTimeout(() => this.intercept(), 2000);
-		setTimeout(() => this.intercept(), 3000);
-		setTimeout(() => this.intercept(), 5000);
-		setTimeout(() => this.intercept(), 10000);
-	}
-	intercept() {
-		if (this.intercepted || !window.$) return;
-		const $ccpa = $('.fc-dns-dialog');
-		if (!$ccpa.length) return;
-		$ccpa.appendTo(this.base!);
-		// $ccpa.css({ position: 'relative', zIndex: 2 });
-		this.intercepted = true;
-	}
-	override render() {
-		return <div></div>;
-	}
-}
-
-export class FormatDropdown extends preact.Component<{
-	selectType?: SelectType, format?: string, defaultFormat?: string, placeholder?: string,
-	onChange?: JSX.EventHandler<Event>,
-}> {
+class FormatDropdown extends preact.Component<{format?: string, onChange?: JSX.EventHandler<Event>}> {
 	declare base?: HTMLButtonElement;
 	format = '[Gen 7] Random Battle';
 	change = (e: Event) => {
@@ -802,26 +429,16 @@ export class FormatDropdown extends preact.Component<{
 		if (this.props.onChange) this.props.onChange(e);
 	};
 	render() {
-		this.format = this.props.format || this.format || this.props.defaultFormat || '';
-		let [formatName, customRules] = this.format.split('@@@');
-		customRules = customRules?.replace(/,/g, ', ');
-		if (window.BattleLog) formatName = BattleLog.formatName(formatName);
-		if (this.props.format && !this.props.onChange) {
-			// There's intentionally no `disabled` prop. If this is out of sync
-			// with the `format` and `onChange` props, that's a bug.
+		if (this.props.format) {
 			return <button
-				name="format" value={this.format} class="select formatselect preselected" disabled
-			>
-				{formatName}
-				{!!customRules && [<br />, <small>{TL.label(TL`Custom rules`, customRules)}</small>]}
-			</button>;
+			name="format" value={this.props.format} class="select formatselect preselected" disabled
+			>{this.props.format}</button>;
 		}
 		return <button
 			name="format" value={this.format}
 			class="select formatselect" data-href="/formatdropdown" onChange={this.change}
 		>
-			{formatName || (!!this.props.placeholder && <em>{this.props.placeholder}</em>) || null}
-			{!!customRules && [<br />, <small>{TL.label(TL`Custom rules`, customRules)}</small>]}
+			{this.format}
 		</button>;
 	}
 }
@@ -836,7 +453,7 @@ class TeamDropdown extends preact.Component<{format: string}> {
 	};
 	getDefaultTeam(teambuilderFormat: string) {
 		for (const team of PS.teams.list) {
-			if (!team.isBox && team.format === teambuilderFormat) return team.key;
+			if (team.format === teambuilderFormat) return team.key;
 		}
 		return '';
 	}
@@ -846,7 +463,7 @@ class TeamDropdown extends preact.Component<{format: string}> {
 		if (formatData && formatData.team) {
 			return <button class="select teamselect preselected" name="team" value="random" disabled>
 				<div class="team">
-					<strong>{TL`Random team`}</strong>
+					<strong>Random team</strong>
 					<small>
 						<span class="picon" style={Dex.getPokemonIcon(null)}></span>
 						<span class="picon" style={Dex.getPokemonIcon(null)}></span>
@@ -876,203 +493,31 @@ class TeamForm extends preact.Component<{
 	children: preact.ComponentChildren, class?: string, format?: string,
 	onSubmit: null | ((e: Event, format: string, team?: Team) => void),
 }> {
-	format = '';
-	teraPreview = false;
-	bestOf = false;
-	bestOfValue = '3';
-	customRules = false;
-	customRuleText = '';
-	itemClause = false;
-	changeFormat = (ev: Event) => {
-		this.setFormat((ev.target as HTMLButtonElement).value);
+	state = {format: '[Gen 7] Random Battle'};
+	changeFormat = (e: Event) => {
+		this.setState({format: (e.target as HTMLButtonElement).value});
 	};
-	setFormat(format: string) {
-		const [baseFormat, customRules] = format.split('@@@');
-		this.format = baseFormat;
-		this.loadCustomRules(customRules);
-	};
-	loadCustomRules(customRules: string) {
-		this.bestOf = false;
-		this.bestOfValue = '3';
-		this.teraPreview = false;
-		this.itemClause = false;
-		if (!customRules) {
-			this.customRules = false;
-			this.customRuleText = '';
-			return;
-		}
-
-		this.customRules = true;
-		const unknownRules: string[] = [];
-		for (const rule of customRules.split(',')) {
-			const trimmedRule = rule.trim();
-			if (!trimmedRule) continue;
-			const bestOfMatch = /^best[-\s]*of\s*=\s*(\d+)$/i.exec(trimmedRule);
-			if (bestOfMatch) {
-				this.bestOf = true;
-				this.bestOfValue = bestOfMatch[1];
-			} else if (/^tera\s+type\s+preview$/i.test(trimmedRule)) {
-				this.teraPreview = true;
-			} else if (/^item\s+clause\s*=\s*1$/i.test(trimmedRule)) {
-				this.itemClause = true;
-			} else {
-				unknownRules.push(trimmedRule);
-			}
-		}
-		this.customRuleText = unknownRules.join('\n');
-	};
-	changeBestOfValue = (ev: Event) => {
-		this.bestOfValue = (ev.target as HTMLInputElement).value;
-	};
-	changeCustomRules = (ev: Event) => {
-		this.customRuleText = (ev.target as HTMLTextAreaElement).value;
-	};
-	addCustomRules(format: string, rules: string[]) {
-		if (!rules.length) return format;
-		const hasCustomRules = format.includes('@@@');
-		return `${format}${hasCustomRules ? ', ' : '@@@ '}${rules.join(', ')}`;
-	}
-	submit = (ev: Event, validate?: 'validate') => {
-		ev.preventDefault();
-		let format = this.format;
-		// in tournaments, format is the custom name & teamFormat is the original format.
-		const teambuilderFormat = PS.teams.teambuilderFormat(this.props.teamFormat || format);
-		const needsTeam = !window.BattleFormats[teambuilderFormat]?.team;
-		const teamElement = this.base!.querySelector<HTMLButtonElement>('button[name=team]');
-		const teamKey = teamElement!.value;
-		const team = needsTeam && teamKey ? PS.teams.byKey[teamKey] : undefined;
-		if (needsTeam && !team) {
-			PS.alert(TL`You need to go into the Teambuilder and build a team for this format.`, {
-				parentElem: teamElement!,
-			});
-			return;
-		}
-		const customRules: string[] = [];
-		if (this.customRules) {
-			if (this.bestOf) {
-				customRules.push(`Best of = ${this.bestOfValue || '3'}`);
-			}
-			if (this.teraPreview) customRules.push('Tera Type Preview');
-			customRules.push(...this.customRuleText.split('\n').map(rule => rule.trim()).filter(Boolean));
-		}
-		if (this.itemClause) {
-			customRules.push('Item Clause = 1');
-		}
-		format = this.addCustomRules(format, customRules);
-		PS.teams.loadTeam(team).then(success => {
-			if (!success) return;
-			(validate === 'validate' ? this.props.onValidate : this.props.onSubmit)?.(ev, format, team);
-		});
-	};
-	toggleCustomRule = (ev: Event) => {
-		const checked = (ev.target as HTMLInputElement)?.checked;
-		const rule = (ev.target as HTMLInputElement)?.name;
-		if (rule === 'terapreview') this.teraPreview = checked;
-		if (rule === 'bestof') this.bestOf = checked;
-		if (rule === 'customrules') {
-			this.customRules = checked;
-			if (!checked) {
-				this.bestOf = false;
-				this.teraPreview = false;
-			}
-			this.forceUpdate();
-		}
-		if (rule === 'itemclause') this.itemClause = checked;
-	};
-	handleClick = (ev: Event) => {
-		let target = ev.target as HTMLButtonElement | null;
-		while (target && target !== this.base) {
-			if (target.tagName === 'BUTTON' && target.name === 'validate') {
-				this.submit(ev, 'validate');
-				return;
-			}
-			target = target.parentNode as HTMLButtonElement | null;
-		}
+	submit = (e: Event) => {
+		e.preventDefault();
+		const format = (this.base!.querySelector('button[name=format]') as HTMLButtonElement).value;
+		const teamKey = (this.base!.querySelector('button[name=team]') as HTMLButtonElement).value;
+		const team = teamKey ? PS.teams.byKey[teamKey] : undefined;
+		if (this.props.onSubmit) this.props.onSubmit(e, format, team);
 	};
 	render() {
-		if (window.BattleFormats) {
-			this.format ||= this.props.defaultFormat || '';
-			if (!this.format) {
-				this.format = `gen${Dex.gen}randombattle`;
-
-				const starredPrefs = PS.prefs.starredformats || {};
-				// .reverse() because the newest starred format should be the default one
-				const starred = Object.keys(starredPrefs).filter(id => starredPrefs[id] === true).reverse();
-				for (let id of starred) {
-					let format = window.BattleFormats[id];
-					if (!format) continue;
-					if (this.props.selectType === 'challenge' && format?.challengeShow === false) continue;
-					if (this.props.selectType === 'search' && format?.searchShow === false) continue;
-					if (this.props.selectType === 'teambuilder' && format?.team) continue;
-					this.format = id;
-					break;
-				}
-			}
-		}
-		if (this.props.defaultFormat?.startsWith('!!')) {
-			// The !! means that it overrides any current format, and will only be
-			// sent as a prop once
-			this.setFormat(this.props.defaultFormat.slice(2));
-		}
-		if (this.props.format) this.format = this.props.format;
-		if (!this.props.format && this.format.includes('@@@')) this.setFormat(this.format);
-		const formatId = toID(this.format.split('@@@')[0]);
-		const format = window.BattleFormats[formatId];
-		const showCustomRules = this.props.selectType === 'challenge' && !this.props.format;
-		return <form class={this.props.class} onSubmit={this.submit} onClick={this.handleClick}>
-			{!this.props.hideFormat && <p>
+		return <form class={this.props.class} onSubmit={this.submit}>
+			<p>
 				<label class="label">
-					{TL.label(TL`Format`)}<br />
-					<FormatDropdown
-						selectType={this.props.selectType} format={this.format}
-						onChange={this.props.format ? undefined : this.changeFormat}
-					/>
+					Format:<br />
+					<FormatDropdown onChange={this.changeFormat} format={this.props.format} />
 				</label>
 			</p>
 			<p>
 				<label class="label">
-					{TL.label(TL`Team`)}<br />
-					<TeamDropdown format={this.props.teamFormat || this.format} />
+					Team:<br />
+					<TeamDropdown format={this.state.format} />
 				</label>
 			</p>
-			{showCustomRules && (!this.customRules ? <p>
-				<label class="checkbox"><input
-					type="checkbox" name="customrules" checked={this.customRules} onChange={this.toggleCustomRule}
-				/> Custom rules</label>
-			</p> : <fieldset class="fieldset">
-				<legend><label class="checkbox"><input
-					type="checkbox" name="customrules" checked={this.customRules} onChange={this.toggleCustomRule}
-				/> Custom rules</label></legend>
-				{(format?.bestOfDefault || this.bestOf) && <p>
-					<label class="checkbox">
-						<input
-							type="checkbox" name="bestof" checked={this.bestOf} onChange={this.toggleCustomRule}
-						/>
-						<abbr title="Start a team-locked best-of-n series">Best-of-<input
-							name="bestofvalue" type="number" min="3" max="9" step="2" value={this.bestOfValue}
-							onInput={this.changeBestOfValue}
-							style="width: 28px; vertical-align: initial;"
-						/></abbr></label>
-				</p>}
-				{(format?.teraPreviewDefault || this.teraPreview) && <p>
-					<label class="checkbox"><input
-						type="checkbox" name="terapreview" checked={this.teraPreview} onChange={this.toggleCustomRule}
-					/> Tera Type Preview</label>
-				</p>}
-				{(format?.itemClauseDefault || this.itemClause) && <p>
-					<label class="checkbox"><input
-						type="checkbox" name="itemclause" checked={this.itemClause} onChange={this.toggleCustomRule}
-					/> Item Clause</label>
-				</p>}
-				<textarea
-					name="customrules" class="textbox" rows={3} placeholder="Rules separated by commas or lines"
-					value={this.customRuleText} onInput={this.changeCustomRules}
-					style="min-height:3em"
-				/>
-				<small><a
-					href="https://github.com/smogon/pokemon-showdown/blob/master/config/CUSTOM-RULES.md" target="_blank"
-				>Custom rules guide</a></small>
-			</fieldset>)}
 			<p>{this.props.children}</p>
 		</form>;
 	}

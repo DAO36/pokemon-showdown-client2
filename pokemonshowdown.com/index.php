@@ -9,11 +9,9 @@
 
 <?php
 include_once __DIR__ . '/../config/config.inc.php';
+include_once __DIR__ . '/../config/ads-landing.inc.php';
+@insertAtHead();
 ?>
-<script>
-window.ramp = window.ramp || {};
-window.ramp.que = window.ramp.que || [];
-</script>
 
 <style>
 @font-face {
@@ -45,7 +43,7 @@ window.ramp.que = window.ramp.que || [];
 		margin-left: 590px;
 	}
 	@media (max-width:880px) {
-		.left iframe, .left .screenshot img {
+		.left iframe {
 			width: 275px;
 			height: 144px;
 		}
@@ -98,7 +96,7 @@ window.ramp.que = window.ramp.que || [];
 	</header>
 
 	<div class="main">
-		<div class="main-spacer" id="landing-aboveintro" style="text-align:center"></div>
+		<div class="main-spacer"><?php @insertAboveIntro(); ?></div>
 
 		<section class="section" style="max-width: 850px">
 			<div class="left">
@@ -252,6 +250,7 @@ if (BrowserDetect.OS === 'Mac') {
 
 			<div class="under-main" style="clear:both;padding-top:1px">
 
+				<div class="main-spacer"><?php @insertBelowIntro(); ?></div>
 				<div style="clear:both;padding-top:1px"></div>
 			</div>
 		</section>
@@ -365,7 +364,7 @@ foreach ($latestNewsCache as $topic_id) {
 <?php
 	if (++$count >= 2) break;
 	if ($count === 1) {
-		echo '<div class="main-spacer" id="landing-betweennews" style="text-align:center"></div>';
+		@insertBetweenNews();
 	}
 }
 
@@ -383,4 +382,4 @@ foreach ($latestNewsCache as $topic_id) {
 	</p>
 </footer>
 
-<script data-cfasync="false" defer src="https://cdn.intergient.com/1025841/77767/ramp.js"></script>
+<?php @insertAtEnd(); ?>

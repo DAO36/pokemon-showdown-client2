@@ -399,7 +399,6 @@ function toId() {
 			window.app = this;
 			this.initializeRooms();
 			this.initializePopups();
-			this.initializeCCPAIntercept();
 
 			this.user = new User();
 			this.ignore = {};
@@ -426,7 +425,6 @@ function toId() {
 					this.addRoom('lobby', null, true);
 				}
 				Storage.whenPrefsLoaded(function () {
-					Dex.loadTextData();
 					if (!Config.server.registered) {
 						app.send('/autojoin');
 						Backbone.history.start({pushState: !Config.testclient});
@@ -739,21 +737,6 @@ function toId() {
 				app.connect();
 			});
 		},
-		setAFD: function (mode) {
-			if (mode === undefined) {
-				if (Config.server.afd) {
-					mode = true;
-				} else if (Dex.prefs('afd') !== undefined) {
-					mode = Dex.prefs('afd');
-				} else {
-					// uncomment on April Fools' Day
-					// mode = true;
-				}
-			}
-
-			Dex.afdMode = mode;
-			if (mode === true) Dex.loadTextData('en-afd');
-		},
 		/**
 		 * This function establishes the actual connection to the sim server.
 		 * This is intended to be called only by `initializeConnection` above.
@@ -890,9 +873,7 @@ function toId() {
 				history.replaceState(null, null, location.pathname);
 			}
 			if (fragment && fragment.includes('.')) fragment = '';
-			fragment = toRoomid(fragment || '');
-			if (fragment === 'oldclient') fragment = '';
-			this.fragment = fragment;
+			this.fragment = fragment = toRoomid(fragment || '');
 			if (this.initialFragment === undefined) this.initialFragment = fragment;
 			this.tryJoinRoom(fragment);
 			this.updateTitle(this.rooms[fragment]);
@@ -1474,7 +1455,6 @@ function toId() {
 					}
 				}
 			}
-			window.BattleFormats = Dex.formats.load(BattleFormats);
 			if (columnChanged) app.supports['formatColumns'] = true;
 			this.trigger('init:formats');
 		},
@@ -1522,9 +1502,7 @@ function toId() {
 				) && this.className !== 'no-panel-intercept') {
 					if (!e.cmdKey && !e.metaKey && !e.ctrlKey) {
 						var target = this.pathname.substr(1);
-
-						// keep this in sync with .htaccess
-						var shortLinks = /^(rooms?suggestions?|suggestions?|adminrequests?|forgotpassword|bugs?(reports?)?|formatsuggestions|rules?|faq|credits?|news|privacy|contact|dex|(damage)?calc|insecure|replays?|devdiscord|smogdex|smogcord|forums?|trustworthy\-dlc\-link|oldclient|newclient)$/;
+						var shortLinks = /^(rooms?suggestions?|suggestions?|adminrequests?|bugs?|bugreports?|rules?|faq|credits?|news|privacy|contact|dex|insecure|replays?|forgotpassword|devdiscord)$/;
 						if (target === 'appeal' || target === 'appeals') target = 'view-help-request--appeal';
 						if (target === 'report') target = 'view-help-request--report';
 						if (isReplayLink) {
@@ -1585,23 +1563,6 @@ function toId() {
 			this.sideRoomList = [];
 
 			$(window).on('resize', _.bind(this.resize, this));
-		},
-		initializeCCPAIntercept: function () {
-			var self = this;
-			self.interceptCCPA();
-			setTimeout(function () { self.interceptCCPA(); }, 1000);
-			setTimeout(function () { self.interceptCCPA(); }, 3000);
-			setTimeout(function () { self.interceptCCPA(); }, 5000);
-			setTimeout(function () { self.interceptCCPA(); }, 10000);
-		},
-		interceptCCPA: function () {
-			if (this.ccpaIntercepted) return;
-			var $ccpa = $('.fc-dns-dialog');
-			if (!$ccpa.length) return;
-			var $target = $('#room- .mainmenufooter');
-			if (!$target.length) return;
-			$ccpa.appendTo($target);
-			this.ccpaIntercepted = true;
 		},
 		fixedWidth: true,
 		resize: function () {
@@ -1763,7 +1724,7 @@ function toId() {
 			}
 
 			room.focus(null, focusTextbox);
-			this.interceptCCPA();
+			return;
 		},
 		focusRoomLeft: function (id) {
 			var room = this.rooms[id];
@@ -1789,7 +1750,7 @@ function toId() {
 			if (this.curRoom.id === id) this.navigate(id);
 
 			room.focus(null, true);
-			this.interceptCCPA();
+			return;
 		},
 		focusRoomRight: function (id) {
 			var room = this.rooms[id];
@@ -1813,7 +1774,7 @@ function toId() {
 			// if (this.curRoom.id === id) this.navigate(id);
 
 			room.focus(null, true);
-			this.interceptCCPA();
+			return;
 		},
 		/**
 		 * This is the function for handling the two-panel layout
@@ -2227,7 +2188,7 @@ function toId() {
 		},
 		dispatchClickButton: function (e) {
 			var target = e.currentTarget;
-			var type = $(target).attr('data-select');
+			var type = $(target).attr('type');
 			if (type === 'submit') type = null;
 			if (target.name || type) {
 				app.dismissingSource = app.dismissPopups();

@@ -1123,12 +1123,11 @@
 					if (typeof BattleTextAFD !== 'undefined') BattleText = BattleTextAFD;
 					this.add('April Fools\' day mode enabled.');
 				}
-				Dex.loadTextData().then(function () {
-					for (var roomid in app.rooms) {
-						var battle = app.rooms[roomid] && app.rooms[roomid].battle;
-						if (battle) battle.resetToCurrentTurn();
-					}
-				});
+				for (var roomid in app.rooms) {
+					var battle = app.rooms[roomid] && app.rooms[roomid].battle;
+					if (!battle) continue;
+					battle.resetToCurrentTurn();
+				}
 				return false;
 
 			// documentation of client commands
