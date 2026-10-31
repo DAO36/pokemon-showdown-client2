@@ -8,6 +8,7 @@ if (preg_match('/^([a-z0-9-_\.]*?)\.psim\.us$/', $host, $m)) {
 	$config['host'] = $m[1];
 	if ($config['host'] === 'logs') die; // not authorised
 	if ($config['host'] === 'sim') die; // not authorised
+	if ($config['host'] === 'insecure') $config['host'] = 'showdown.insecure';
 } else if ($host === $psconfig['routes']['client']) {
 	$config['host'] = 'showdown';
 } else {
@@ -113,6 +114,8 @@ function postReply (message) {
 function messageHandler(e) {
 	if (e.origin !== yourOrigin) return;
 	var data = e.data;
+	if (typeof data !== 'string') return; // we don't do this but external code can
+	// console.log('recv: ' + data);
 
 	// data's first char:
 	// T: store teams

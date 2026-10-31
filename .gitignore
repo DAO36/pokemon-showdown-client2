@@ -8,11 +8,9 @@ npm-debug.log
 
 /play.pokemonshowdown.com/sprites/
 /play.pokemonshowdown.com/audio/
-/play.pokemonshowdown.com/index.php
-/play.pokemonshowdown.com/index.html
-/play.pokemonshowdown.com/index-test.html
-/play.pokemonshowdown.com/preactalpha.html
-/play.pokemonshowdown.com/crossprotocol.html
+
+# built from other sources
+/play.pokemonshowdown.com/caches/
 /play.pokemonshowdown.com/data/
 
 /play.pokemonshowdown.com/js/server/
@@ -32,8 +30,11 @@ npm-debug.log
 /pokemonshowdown.com/images/
 /pokemonshowdown.com/ads.txt
 
-/replay.pokemonshowdown.com/index.php
 /replay.pokemonshowdown.com/js/
 /replay.pokemonshowdown.com/caches/
 /replay.pokemonshowdown.com/theme/wrapper.inc.php
 /replay.pokemonshowdown.com/ads.txt
+
+/teams.pokemonshowdown.com/js/
+/teams.pokemonshowdown.com/caches/
+/teams.pokemonshowdown.com/ads.txt

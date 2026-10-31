@@ -27,6 +27,7 @@ child_process.execSync('npm run build', { cwd: 'caches/pokemon-showdown' });
 console.log("DONE");
 
 const Dex = require('../caches/pokemon-showdown/dist/sim/dex').Dex;
+const { CLIENT_MODS } = require('./build-translations');
 const CompoundWordNames = require('../caches/pokemon-showdown/dist/data/aliases').CompoundWordNames;
 const toID = Dex.toID;
 process.stdout.write("Loading gen 6 data... ");
@@ -1490,5 +1491,8 @@ process.stdout.write("Building `data/moves,items,abilities,typechart,learnsets.j
  * Build text/*.js
  *********************************************************/
 
+{
+	require('./build-translations').buildTextFiles(Dex);
+}
 
 console.log("DONE");

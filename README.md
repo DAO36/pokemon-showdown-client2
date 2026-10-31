@@ -41,13 +41,19 @@ Pokémon Showdown is mostly developed on Chrome, and Chrome or the desktop clien
 Testing
 ------------------------------------------------------------------------
 
-Client testing now requires a build step! Install the latest Node.js (we
-require v14 or later) and Git, and run `node build` (on Windows) or `./build`
-(on other OSes) to build.
+Development is proceeding on the client rewrite! The live version is
+available at https://play.pokemonshowdown.com/beta
+
+Client testing requires a build step! Install the latest Node.js (we
+require v22 or later) and Git, and run `node build` (on Windows) or `./build`
+(on other OSes) to build after each change.
+
+(This will do a fast build with no checks. For tests, linting, and
+typechecking, you'll want to do `npm test` separately.)
 
 You can make and test client changes simply by building after each change,
-and opening `testclient.html`. This will allow you to test changes to the
-client without setting up your own login server.
+and opening `play.pokemonshowdown.com/testclient-new.html`. This will allow you
+to test changes to the client without setting up your own login server.
 
 ### Test keys
 
@@ -55,9 +61,8 @@ For security reasons, browsers [don't let other websites control PS][5], so
 they can't screw with your account, but it does make it harder to log in on
 the test client.
 
-The default hack makes you copy/paste the data instead, but if you're
-refreshing a lot, just add a `config/testclient-key.js` file, with the
-contents:
+If you need a logged-in account, add a `config/testclient-key.js` file, with
+the contents:
 
     const POKEMON_SHOWDOWN_TESTCLIENT_KEY = 'sid';
 
@@ -67,21 +72,21 @@ access this on Chrome through the URL bar:
 ![image](https://user-images.githubusercontent.com/551184/53414680-def43480-3994-11e9-89d0-c06098c23fa0.png)
 ![image](https://user-images.githubusercontent.com/551184/53414760-119e2d00-3995-11e9-80f8-ecd17467310a.png)
 
-(This is the only supported method of logging in on the beta Preact client.)
+Make sure to put it in `config/` and not `play.pokemonshowdown.com/config/`.
 
   [5]: https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
 
 ### Other servers
 
 You can connect to an arbitrary server by navigating to
-`testclient.html?~~host:port`. For example, to connect to a server running
-locally on port 8000, you can navigate to `testclient.html?~~localhost:8000`.
+`testclient-new.html?~~host:port`. For example, to connect to a server running
+locally on port 8000, you can navigate to `testclient-new.html?~~localhost:8000`.
 
 **NOTE**: Certain browsers will convert `'?'` to `'%3F'` when reading files off
 of the local filesystem. As a workaround, try using a different browser or
 serving the files locally first (ie. run `npx http-server` from the
 directory this README is in, then navigate in your browser to
-`http://localhost:8080/testclient.html?~~localhost:8000`).
+`http://localhost:8080/testclient-new.html?~~localhost:8000`).
 
 ### Limitations
 

@@ -10,10 +10,10 @@
  * @license MIT
  */
 
-const babel = require('@babel/core');
-const fs = require('fs');
-const path = require('path');
-const sourceMap = require('source-map');
+import * as babel from '@babel/core';
+import fs from 'node:fs';
+import path from 'node:path';
+import sourceMap from 'source-map';
 
 const VERBOSE = false;
 
@@ -35,9 +35,9 @@ function outputFileSync(filePath, res, opts) {
   fs.writeFileSync(filePath, res.code);
 }
 
-function slash(path) {
-	const isExtendedLengthPath = /^\\\\\?\\/.test(path);
-	const hasNonAscii = /[^\u0000-\u0080]+/.test(path);
+function slash(filePath) {
+	const isExtendedLengthPath = /^\\\\\?\\/.test(filePath);
+	const hasNonAscii = /[^\u0000-\u0080]+/.test(filePath);
 
 	if (isExtendedLengthPath || hasNonAscii) {
 		return path;
@@ -186,9 +186,9 @@ function compileToDir(srcDir, destDir, opts = {}) {
   return total;
 }
 
-function compileToFile(srcFile, destFile, opts) {
-  const incremental = opts.incremental;
-  delete opts.incremental;
+async function compileToFile(srcFile, destFile, opts) {
+	const incremental = opts.incremental;
+	delete opts.incremental;
 
   const srcFiles = typeof srcFile === 'string' ? [srcFile] : srcFile;
 
@@ -209,18 +209,15 @@ function compileToFile(srcFile, destFile, opts) {
     if (VERBOSE) console.log(src + " ->");
   }
 
-  combineResults(results, {
-    file: path.basename(destFile),
-    sourceRoot: opts.sourceRoot,
-  }, opts).then(combined => {
-    outputFileSync(destFile, combined, opts);
-  });
+	const combined = await combineResults(results, {
+		file: path.basename(destFile),
+		sourceRoot: opts.sourceRoot,
+	}, opts);
+	outputFileSync(destFile, combined, opts);
 
   if (VERBOSE) console.log("-> " + destFile);
   if (incremental) opts.incremental = true; // incredibly dumb hack to preserve the option
   return results.length;
 }
 
-exports.compileToDir = compileToDir;
-
-exports.compileToFile = compileToFile;
+export { compileToDir, compileToFile };

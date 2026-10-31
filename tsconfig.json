@@ -3,11 +3,15 @@
         "lib": ["dom", "es6", "es2016.array.include", "es2017.object"],
         "noEmit": true,
         "target": "esnext",
-        "module": "None",
+        "module": "ES2015",
+        "esModuleInterop": true,
+        "allowSyntheticDefaultImports": true,
+        "verbatimModuleSyntax": true,
+        "forceConsistentCasingInFileNames": true,
         "jsx": "preserve",
         "strict": true
     },
-    "types": [],
+    "types": ["*"],
     "include": [
         "./play.pokemonshowdown.com/js/lib/preact.d.ts",
         "./play.pokemonshowdown.com/src/*"
